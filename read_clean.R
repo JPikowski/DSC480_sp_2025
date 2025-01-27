@@ -3,6 +3,8 @@
 ## Change the working directory and file paths as appropriate
 
 #setwd("C:\Users\jojob\OneDrive - University of New England\DSC 480\DSC480_sp_2025")
+# Setting up the terminal: paste
+#cd C:\Users\jojob\OneDrive - University of New England\DSC 480\DSC480_sp_2025
 
 library(tidyverse)
 
