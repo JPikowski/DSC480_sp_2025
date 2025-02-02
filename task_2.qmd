@@ -6,10 +6,12 @@ format: pdf
 ---
 
 ## Looking at the Data
+
 ```{r}
 #libraries
 library(dplyr)
 library(lubridate)
+library(tidyverse)
 ```
 
 
