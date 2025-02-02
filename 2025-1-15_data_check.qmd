@@ -58,7 +58,8 @@ source("read_clean.R")
 #### Check dates
 
 ```{r}
- sum(report_full$ibis_coverage_start_date < report_full$coverage_start_date)
+# counts how many times the ibis_coverage_start_date is earlier than the coverage_start_date in  report_full 
+sum(report_full$ibis_coverage_start_date < report_full$coverage_start_date)
 ```
 
 ```{r}
@@ -265,7 +266,6 @@ report_full %>% filter(ibis_coverage_start_date < coverage_start_date) %>%
 patients |> distinct(pid) # Checking the reports rows of unique data
 n_distinct(patients$pid)
 ```
-
 
 #### Coverage days pre/post Unicare and All member.
 
