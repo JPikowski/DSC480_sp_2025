@@ -1,0 +1,75 @@
+---
+title: "task 2 2/22025"
+author: JoJo Pikowski
+date: 2025/02/02
+format: pdf
+---
+
+## Looking at the Data
+```{r}
+#libraries
+library(dplyr)
+library(lubridate)
+```
+
+
+```{r}
+glimpse(report_full)
+patients |> distinct(pid)
+```
+
+```{r}
+glimpse(events_full)
+```
+
+# Create a new file and write code to replace dates with columns for days since coverage_start_date
+
+-   replace event dates find the difference since the start coverage date
+-   days since coverage start mutate and add: days_since_cov_start days_since_ibis_start
+
+```{r}
+events_full |> 
+  mutate(days_since_cov_start = event_start_date - coverage_start_date) |>
+  mutate(days_since_ibis_start = event_start_date - ibis_coverage_start_date) |>
+select(coverage_start_date, event_start_date, ibis_coverage_start_date, days_since_cov_start, days_since_ibis_start)
+
+events_full |> mutate(days_since_cov_start = event_start_date - coverage_start_date) |>
+  mutate(days_since_ibis_start = event_start_date - ibis_coverage_start_date) |>
+  select(days_since_cov_start, days_since_ibis_start)
+```
+
+# Create logical or 0, 1 columns for whether the event took place between - coverage_start_date and ibis_coverage_start_date, and whether between - ibis_coverage_start_date andibis_coverage_end_date.
+
+-   zero or one -- ibis or not
+
+```{r}
+binary_events <- events_full |>
+  mutate(days_since_cov_start = event_start_date - coverage_start_date,
+    days_since_ibis_start = event_start_date - ibis_coverage_start_date,
+    event_between_ibis_cov = event_start_date >= event_start_date & coverage_start_date < ibis_coverage_start_date,
+    event_between_ibis_cov = as.integer(event_between_ibis_cov),
+    event_between_ibis_start_and_ibis_end = event_start_date >= ibis_coverage_start_date & event_start_date <= ibis_coverage_end_date,
+    event_between_ibis_start_and_ibis_end = as.integer(event_between_ibis_start_and_ibis_end)) |>
+  select(days_since_ibis_start, days_since_ibis_start, event_between_ibis_cov, event_between_ibis_start_and_ibis_end)
+
+binary_events
+```
+
+# As a separate exercise, in the same file, write code that tweaks the dates by adding a random number of days. Use uniform on [-5, 5]. Do this with the unprocessed data; that is, the dates are numerical and are the number of seconds since a baseline date. You can find what the dates are using as.POSIXct(). You can check what 0 is with as.POSIXct(0). So you just need to add uniform random days, in seconds. Try a toy data set to see test your code, for example df <- tibble(timestamp = c(rep(1732424400, 10))). You can use mutate(across(contains("timestamp")
+
+```{r}
+# toy dataset
+df <- tibble(timestamp = c(rep(1732424400, 10)))
+
+df <- df |>
+  mutate(across(contains("timestamp"), 
+    ~as.POSIXct(.x, format = "%Y-%m-%d %H:%M:%S")),
+    random_days = sample(-5:5, size = n(), replace = TRUE) * 24 * 60 * 60, # random num within [-5, 5]
+    adj_time = timestamp + seconds(random_days)) |> #ask AI for help with the line above
+  select(-random_days)
+
+df
+
+```
+
+
