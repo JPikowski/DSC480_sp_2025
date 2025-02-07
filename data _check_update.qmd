@@ -66,6 +66,41 @@ condition_counts
 
 ```{r}
 
+# Create a patients dataframe (assuming 'pid' and other relevant columns are present)
+patients <- data.frame(pid = unique(events_full$pid))
+
+# Calculate pre-IBIS admissions count
+pre_ibis_admissions_count <- events_full %>% 
+  filter(event_start_date <= ibis_coverage_start_date & event_start_date >= coverage_start_date & event_type == "inpatient") %>%
+  group_by(pid) %>% 
+  summarize(admit_count = n()) %>% 
+  right_join(patients, by = "pid") %>% 
+  mutate(admit_count = ifelse(is.na(admit_count), 0, admit_count))
+
+# Calculate post-IBIS admissions count
+post_ibis_admissions_count <- events_full %>% 
+  filter(event_start_date > ibis_coverage_start_date & event_start_date <= ibis_coverage_end_date & event_type == "inpatient") %>%
+  group_by(pid) %>% 
+  summarize(admit_count = n()) %>% 
+  right_join(patients, by = "pid") %>% 
+  mutate(admit_count = ifelse(is.na(admit_count), 0, admit_count))
+
+# Summarize pre-treatment Unicare admissions count
+pre_unicare_admissions_count <- pre_ibis_admissions_count %>%
+  summarize(unicare_pre_admits = sum(admit_count))
+
+# Summarize post-treatment Unicare admissions count
+post_unicare_admissions_count <- post_ibis_admissions_count %>%
+  summarize(unicare_post_admits = sum(admit_count))
+
+# Combine the results into a summary table
+summary_table <- data.frame(
+  Treatment_Period = c("Pre-Treatment", "Post-Treatment"),
+  Unicare_Admissions = c(pre_unicare_admissions_count$unicare_pre_admits, post_unicare_admissions_count$unicare_post_admits)
+)
+
+# Print the summary table
+print(summary_table)
 
 ```
 
@@ -73,13 +108,16 @@ condition_counts
 ## UniCare Study Participants (In Treatment)
 ```{r}
 
-
 ```
 
 
 ## All Ibis Member Average (Pre-Treatment)
 ```{r}
+events_full %>% filter(event_start_date  < ibis_coverage_start_date) %>% filter(event_start_date > coverage_start_date) %>%
+    summarize(sum(pre_ibis_inpatient), sum(post_ibis_inpatient))
 
+events_full %>% filter(event_start_date  >= ibis_coverage_start_date) %>% filter(event_start_date < ibis_coverage_end_date) %>% 
+    summarize(sum(pre_ibis_inpatient), sum(post_ibis_inpatient))
 
 ```
 
