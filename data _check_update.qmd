@@ -1,0 +1,109 @@
+---
+title: "data_check_update"
+author: JoJo Pikowski
+date: 2025/02/02
+format: pdf
+---
+
+```{r}
+#libraries
+library(dplyr)
+
+```
+
+```{r}
+head(events_full)
+```
+
+```{r}
+summary(events_full)
+
+```
+
+## Overall counts -- no ER
+
+```{r}
+#unique PID values
+unique_pid_count <- events_full %>%
+  summarise(unique_pids = n_distinct(pid))
+
+unique_pid_count
+
+```
+
+
+```{r}
+#num of events seperated by type
+event_type_count <- events_full %>%
+  group_by(event_type) %>%
+  summarise(count = n())
+
+event_type_count
+
+```
+
+```{r}
+#median of coverage days
+coverage_duration_stats <- events_full %>%
+  summarise(mean_coverage_duration = mean(coverage_duration_days, na.rm = TRUE),
+            median_coverage_duration = median(coverage_duration_days, na.rm = TRUE))
+
+coverage_duration_stats
+
+```
+
+```{r}
+#num of occurrences of conditions
+condition_counts <- events_full %>%
+  select(alzheimers:non_ibis_observation_admission_days) %>%
+  summarise_all(~ sum(!is.na(.)))
+
+condition_counts
+```
+
+# UniCare Study Participants (Pre-Treatment) 
+- purple is post ibis pretreatment is preibis
+
+```{r}
+
+
+```
+
+
+## UniCare Study Participants (In Treatment)
+```{r}
+
+
+```
+
+
+## All Ibis Member Average (Pre-Treatment)
+```{r}
+
+
+```
+
+
+## All Ibis Member Average (In Treatment)
+- between ibis_cov_start and ibis_cov_end
+```{r}
+
+
+```
+
+## Look at admissions post-ibis
+```{r}
+
+```
+
+
+# How many ibis_cov_start date = 0 and then change to the start date or a high number --- all in the pre period
+
+- count total admissions pre and post for both the unicare-study and the whole group
+
+- compare days: number of days total of coverage for unicare-study vs everybody pre and post treatment
+
+when you add his column of preibis in patient it should what we get from the table 
+
+- add all the coverage days and also do counts by patient 
+ultimately find the inpatient events for each patient
