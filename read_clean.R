@@ -33,3 +33,4 @@ report_full <- report %>%
     mutate(across(event_type, ~ str_replace(.x, " ", "_"))) |>
   mutate(across(event_type, ~as.factor(.x)))
 
+

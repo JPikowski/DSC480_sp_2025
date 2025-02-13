@@ -24,7 +24,7 @@ knitr::opts_chunk$set(
 
 ```
 
-```{r, echo=FALSE, warning=FALSE, include=FALSE}
+```{r, echo=TRUE, warning=FALSE, include=FALSE}
 library(survival)
 library(tidyverse)
 library(tidymodels)
@@ -55,29 +55,28 @@ source("read_clean.R")
 
 
 ### Eventually will want to filter patients under observation for min number of days,
-###
+### "ibis_coverage_start_date"             "ibis_coverage_end_date"
 
 term <- 0
 lag <- term
 
 ibis_term <- events_full %>%
     filter(str_detect(org_name, "Unicare")) %>%
-    filter(last_reminder_complete_date - first_reminder_complete_date > term) %>%
-    mutate(days = last_reminder_complete_date - first_reminder_complete_date)
+    filter(ibis_coverage_end_date - ibis_coverage_start_date > term) %>%
+    mutate(days = ibis_coverage_end_date - ibis_coverage_start_date)
 
 ibis_patients_term <- ibis_term %>%
     select(pid) %>% distinct() %>% mutate(cohort = "Unicare")
-
 
 ```
 
 ```{r, echo=FALSE}
 #| label: MIIA term
 
-
+# finding if MIIA is in the org name
 MIIA_term <- events_full %>% filter(str_detect(org_name, "MIIA")) %>%
-    filter(first_reminder_complete_date - coverage_start_date > term) %>%
-    mutate(days = first_reminder_complete_date - coverage_start_date)
+    filter(ibis_coverage_start_date - coverage_start_date > term) %>%
+    mutate(days = ibis_coverage_start_date - coverage_start_date)
 
 MIIA_patients_term <- MIIA_term %>%
     select(pid) %>% distinct() %>%
@@ -90,9 +89,9 @@ MIIA_patients_term <- MIIA_term %>%
 ### Ibis summaries
 ## round inpatient days
 ibis_events <- events_full %>%
-    filter(term == 0 & event_start_date > first_reminder_complete_date |
-           term != 0 & event_start_date > first_reminder_complete_date &
-                       event_start_date < first_reminder_complete_date + term)
+    filter(term == 0 & event_start_date > ibis_coverage_start_date |
+           term != 0 & event_start_date > ibis_coverage_start_date &
+                       event_start_date < ibis_coverage_start_date + term)
 
     # Old:
     # filter(event_start_date > first_reminder_complete_date) # %>% ### term here!!
@@ -119,7 +118,7 @@ ibis_event_summary <- ibis_patients_term %>% left_join(ibis_events_pre, by = "pi
     replace(is.na(.), 0) %>%
     select(pid, emergency, inpatient, inpatient_days)
 
-#########
+######### 
 ```
 
 ```{r, echo=FALSE}
@@ -133,12 +132,11 @@ ibis_event_summary <- ibis_patients_term %>% left_join(ibis_events_pre, by = "pi
 
 
 MIIA_events <- MIIA_term %>%
-    filter(term == 0 & event_start_date < first_reminder_complete_date |
-           term !=0 & event_start_date < first_reminder_complete_date &
+    filter(term == 0 & event_start_date < ibis_coverage_start_date |
+           term !=0 & event_start_date < ibis_coverage_start_date &
                       event_start_date < coverage_start_date + lag)
 
 ```
-
 
 ```{r, echo=FALSE}
 #| label: patient-data
@@ -162,9 +160,73 @@ obs_times <- rbind(ibis_term, MIIA_term) %>% select(pid, days) %>% distinct()
 
 Use both numerical and graphical summaries
 
-- Age, days and HCC score distributions, by cohort
-- Days under observation by cohort
-- Condition counts, by cohort
-- HCC scores, by cohort
-- Proportion with at least one admission, by cohort
-- number of admissions, by cohort proportions
+-   Age, days and HCC score distributions, by cohort
+-   Days under observation by cohort
+-   Condition counts, by cohort
+-   HCC scores, by cohort
+-   Proportion with at least one admission, by cohort
+-   number of admissions, by cohort proportions
+
+grouby patient and filter Unicare-study vs MIIA
+
+\# compare with counts
+
+#in patient admissions
+
+compare unicare-study during ibis and MIIA only the ones that are pre ibis
+
+-   get hospital admit counts
+
+    columns: pID, org, inpatient admits count, admit -- check if they were admited (admited or not binary)
+
+-   do a bar plot for the two populations
+
+change the dates to coverage start and end dates instead of first remider
+
+use t-test = t.test for significance ? c
+
+
+```{r}
+MIIA_counts <- MIIA_events %>%
+     mutate(event_type = factor(event_type, levels = event_list)) %>%
+    group_by(pid, event_type)  %>%
+    summarize(count = n(), .groups = "drop") %>%
+    pivot_wider(names_from = event_type, values_from = count)  %>%
+    replace(is.na(.), 0)
+
+MIIA_admit_days <- MIIA_events %>%
+     group_by(pid) %>% summarize(inpatient_days = round(sum(event_duration_days), 0))
+
+MIIA_events_pre <- MIIA_counts %>%
+    full_join(MIIA_admit_days, by = "pid")
+
+MIIA_event_summary <- MIIA_patients_term %>% left_join(MIIA_events_pre, by = "pid") %>%
+    replace(is.na(.), 0) %>%
+    select(pid, emergency, inpatient, inpatient_days)
+```
+
+```{r}
+# rbind is used to combine multiple df by rows
+
+combined_event_summary <- rbind(
+  ibis_event_summary %>% mutate(org = "Unicare"),
+  MIIA_event_summary %>% mutate(org = "MIIA")
+)
+admit_summary <- combined_event_summary %>%
+  mutate(admit = ifelse(inpatient > 0, 1, 0))
+```
+
+
+```{r}
+ggplot(admit_summary, aes(x = org, fill = as.factor(admit))) +
+  geom_bar() +
+  labs(title = "Admissions Comparison", 
+       x = "Organization", 
+       y = "Count", 
+       fill = "Admit Status") +
+  scale_fill_manual(values = c("0" = "red", "1" = "blue"), 
+                    labels = c("Not Admitted", "Admitted")) +
+  theme_minimal()
+```
+
+
