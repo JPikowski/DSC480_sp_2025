@@ -10,7 +10,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-```{r knitr, warning=FALSE, echo = FALSE, include=FALSE}
+```{r knitr, warning=FALSE, echo = TRUE, include=FALSE}
 options(htmltools.dir.version = FALSE)
 knitr::opts_chunk$set(
   cache = FALSE,
@@ -185,7 +185,6 @@ change the dates to coverage start and end dates instead of first remider
 
 use t-test = t.test for significance ? c
 
-
 ```{r}
 MIIA_counts <- MIIA_events %>%
      mutate(event_type = factor(event_type, levels = event_list)) %>%
@@ -216,7 +215,6 @@ admit_summary <- combined_event_summary %>%
   mutate(admit = ifelse(inpatient > 0, 1, 0))
 ```
 
-
 ```{r}
 ggplot(admit_summary, aes(x = org, fill = as.factor(admit))) +
   geom_bar() +
@@ -228,5 +226,52 @@ ggplot(admit_summary, aes(x = org, fill = as.factor(admit))) +
                     labels = c("Not Admitted", "Admitted")) +
   theme_minimal()
 ```
+
+```{r}
+total_days_coverage <- events_full %>%
+  mutate(coverage_days = as.numeric(ibis_coverage_end_date - ibis_coverage_start_date)) %>%
+  group_by(pid) %>%
+  summarize(total_coverage_days = sum(coverage_days))
+
+print(total_days_coverage)
+```
+
+```{r}
+#days of coverage for Unicare patients
+unicare_days_coverage <- events_full %>%
+  filter(str_detect(org_name, "Unicare")) %>%
+  mutate(coverage_days = as.numeric(ibis_coverage_end_date - ibis_coverage_start_date)) %>%
+  group_by(pid) %>%
+  summarize(total_coverage_days = sum(coverage_days)) %>%
+  mutate(org = "Unicare")
+
+#days of coverage for MIIA patients
+miia_days_coverage <- events_full %>%
+  filter(str_detect(org_name, "MIIA")) %>%
+  mutate(coverage_days = as.numeric(ibis_coverage_end_date - ibis_coverage_start_date)) %>%
+  group_by(pid) %>%
+  summarize(total_coverage_days = sum(coverage_days)) %>%
+  mutate(org = "MIIA")
+
+print("Total coverage days for Unicare patients:")
+print(unicare_days_coverage)
+
+print("Total coverage days for MIIA patients:")
+print(miia_days_coverage)
+
+```
+
+```{r}
+total_days_coverage <- rbind(unicare_days_coverage, miia_days_coverage) #I looked up rbind to combine the data 
+# rbind(): The rbind or the row bind function is used to bind or combine the multiple group of rows together.
+
+ggplot(total_days_coverage, aes(x = org, y = total_coverage_days, fill = org)) +
+  geom_col() +
+  labs(title = "Total Number of Days of Coverage by Organization", 
+       x = "Organization", 
+       y = "Total Days of Coverage") +
+  theme_minimal()
+```
+
 
 
