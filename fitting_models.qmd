@@ -1,0 +1,31 @@
+---
+title: "fitting_models"
+format: pdf
+---
+
+# Significance of versus null model
+```{r}
+library(dplyr)
+#library(poissonreg)
+
+#glm - generalized linear models
+vif(lm(inpatient ~ ., data = df_prep))
+
+mod_null <- glm(inpatient ~ 1, data = df_prep, family = "poisson")
+
+mod_pois0 <- glm(inpatient ~ hcc + age + cohort, data = df_prep, family = "poisson")
+
+mod_pois1 <- glm(inpatient ~ ., data = df_prep, family = "poisson")
+
+mod_zinfl0 <- zeroinfl(inpatient ~ hcc + age + cohort|1, data = df_prep, dist = "poisson")
+summary(mod_zinfl0)
+
+mod_zinfl1 <- zeroinfl(inpatient ~ hcc + age + cohort|age + hcc + cohort, data = df_prep, dist = "poisson")
+
+mod_zinfl2 <- zeroinfl(inpatient ~ .|hcc + cohort, data = df_prep, dist = "poisson")
+summary(mod_zinfl2)
+
+pchisq(2 * logLik(mod_zinfl1) - logLik(mod_zinfl0), df = 30, lower.tail = FALSE)
+
+#library(lmtest)
+```
