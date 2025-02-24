@@ -29,3 +29,28 @@ pchisq(2 * logLik(mod_zinfl1) - logLik(mod_zinfl0), df = 30, lower.tail = FALSE)
 
 #library(lmtest)
 ```
+
+Bar graph of count of admissions pre and post 
+- then statistical tests
+
+TO DO - raw counts
+admission counts, pre/post
+compare proportions of both 
+inpatient days 
+inpatients days per number of days
+inpatients counts per number of days (divide by number of days)-- perpatient for 1,000 yrs
+
+putting in a table
+?mcnemar.test
+
+
+Stats
+wilcox signed ranked test 
+?wilcox.test
+?t.test -- how to use t test in r
+- paired data needs paired t test
+
+rpois(lamda) - generate random count data
+
+
+
