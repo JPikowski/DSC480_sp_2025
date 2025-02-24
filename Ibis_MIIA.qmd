@@ -237,6 +237,8 @@ print(total_days_coverage)
 ```
 
 ```{r}
+#filter the negative days out 
+
 #days of coverage for Unicare patients
 unicare_days_coverage <- events_full %>%
   filter(str_detect(org_name, "Unicare")) %>%
@@ -272,6 +274,3 @@ ggplot(total_days_coverage, aes(x = org, y = total_coverage_days, fill = org)) +
        y = "Total Days of Coverage") +
   theme_minimal()
 ```
-
-
-
