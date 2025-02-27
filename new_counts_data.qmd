@@ -173,6 +173,67 @@ print(thousand_totals)
 ```
 
 
+```{r}
+# Different version
+# coverage days and days on ibis and pre-ibis
+cov_table <- data_full %>%
+  select(pid, coverage_start_date, coverage_end_date, first_reminder_complete_date,
+         ibis_coverage_start_date, ibis_coverage_end_date, covered_days_on_ibis, covered_days_pre_ibis) %>%
+  distinct()
+
+in_first <- data_full %>% select(pid, event_type, event_start_date) %>%
+  filter(event_type == "inpatient") %>%
+  group_by(pid) %>% summarize(first_admit_date = min(event_start_date), .groups = 'drop')
+
+admit_table <- cov_table %>%
+  left_join(in_first, by = "pid") %>%
+  mutate(pre_time = first_reminder_complete_date - coverage_start_date) %>%
+  mutate(post_time = coverage_end_date - first_reminder_complete_date) %>%
+  filter(!is.na(post_time)) %>%
+  filter(pre_time >= 0) %>%
+  mutate(pre_days = as.numeric(pre_time),
+         post_days = as.numeric(post_time))
+
+# pre and post admissions counts
+pre_admissions <- data_full %>%
+  filter(event_start_date < first_reminder_complete_date, event_type == "inpatient") %>%
+  nrow()
+
+post_admissions <- data_full %>%
+  filter(event_start_date >= first_reminder_complete_date, event_type == "inpatient") %>%
+  nrow()
+
+# pre and post inpatient days
+pre_inpatient_days <- data_full %>%
+  filter(event_start_date < first_reminder_complete_date, event_type == "inpatient") %>%
+  summarise(total_inpatient_days = sum(event_duration_days, na.rm = TRUE)) %>%
+  pull(total_inpatient_days)
+
+post_inpatient_days <- data_full %>%
+  filter(event_start_date >= first_reminder_complete_date, event_type == "inpatient") %>%
+  summarise(total_inpatient_days = sum(event_duration_days, na.rm = TRUE)) %>%
+  pull(total_inpatient_days)
+
+pre_total_days <- sum(cov_table$covered_days_pre_ibis, na.rm = TRUE)
+post_total_days <- sum(cov_table$covered_days_on_ibis, na.rm = TRUE)
+
+pre_inpatient_days_per_1000_days <- pre_inpatient_days / pre_total_days * 1000
+post_inpatient_days_per_1000_days <- post_inpatient_days / post_total_days * 1000
+
+# Display the results
+totals <- tibble(
+  pre_admissions = pre_admissions,
+  post_admissions = post_admissions,
+  pre_inpatient_days = pre_inpatient_days,
+  post_inpatient_days = post_inpatient_days,
+  pre_inpatient_days_per_1000_days = pre_inpatient_days_per_1000_days,
+  post_inpatient_days_per_1000_days = post_inpatient_days_per_1000_days
+)
+
+print(totals)
+
+
+```
 
 
 
