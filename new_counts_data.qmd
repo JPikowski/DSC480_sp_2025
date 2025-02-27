@@ -1,0 +1,182 @@
+---
+title: "new_data_counts"
+format: pdf
+---
+
+### Loading the data
+```{r}
+new_events <- read_csv("2025_02_18_utilization_events.csv")
+new_report <- read_csv("2025_02_18_utilization_report.csv")
+```
+
+```{r}
+colnames(new_events)
+```
+
+```{r}
+colnames(new_report)
+```
+
+```{r}
+library(tidyverse)
+library(lubridate)
+
+# Read the dataset
+df <- read_csv("2025_02_18_utilization_events.csv")
+
+# Process the data
+data_full <- df %>%
+  mutate_at(vars(contains("timestamp")), ~as.POSIXct(.x, format = "%Y-%m-%d %H:%M:%S")) %>%
+  mutate_at(vars(contains("timestamp")), ~as_date(.x)) %>%
+  rename_with(~str_replace(., "timestamp", "date"), contains("timestamp"))
+
+data_full$event_type <- as.factor(data_full$event_type)
+
+levels(data_full$event_type) <- c("emergency", "inpatient", "no_utilization", "observation")
+
+# Create event_table
+event_table <- data_full %>%
+  group_by(pid, event_type) %>%
+  summarize(count = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = event_type, values_from = count) %>%
+  replace(is.na(.), 0)
+
+# Create cov_table
+cov_table <- data_full %>%
+  select(pid, coverage_start_date, coverage_end_date, first_reminder_complete_date,
+         ibis_coverage_start_date, ibis_coverage_end_date, last_reminder_complete_date) %>%
+  distinct()
+
+# Create ibis_yes and ibis_no
+ibis_yes <- cov_table %>% filter(!is.na(first_reminder_complete_date)) %>% mutate(ibis = 1)
+ibis_no <- cov_table %>% filter(is.na(first_reminder_complete_date)) %>% mutate(ibis = 0)
+ibis_yesno <- bind_rows(ibis_no, ibis_yes) %>% select(pid, ibis)
+
+# Get inpatient events, date of first
+in_first <- data_full %>% select(pid, event_type, event_start_date) %>%
+  filter(event_type == "inpatient") %>%
+  group_by(pid) %>% summarize(first_admit_date = min(event_start_date), .groups = 'drop')
+
+admit_table <- cov_table %>%
+  left_join(in_first, by = "pid") %>%
+  left_join(ibis_yesno, by = "pid")
+
+admit_table_times <- admit_table %>%
+  mutate(pre_time = first_reminder_complete_date - coverage_start_date) %>%
+  mutate(post_time = coverage_end_date - first_reminder_complete_date) %>%
+  filter(!is.na(post_time)) %>%  # remove 711 non ibis
+  filter(pre_time >= 0)          # remove observations with first_reminder < coverag_start
+
+# First admit post ibis
+post_ibis_first_in <- data_full %>% filter(event_start_date > first_reminder_complete_date) %>%
+  select(pid, event_type, event_start_date) %>%
+  filter(event_type == "inpatient") %>%
+  group_by(pid) %>% summarize(first_admit_post_ibis_date = min(event_start_date), .groups = 'drop')
+
+first_admit_post_ibis_table <- cov_table %>%
+  left_join(post_ibis_first_in, by = "pid") %>%
+  inner_join(ibis_yesno, by = "pid") %>% filter(ibis == 1)
+
+# First admit pre ibis
+pre_ibis_first_in <- data_full %>% filter(event_start_date < first_reminder_complete_date) %>%
+  select(pid, event_type, event_start_date) %>%
+  filter(event_type == "inpatient") %>%
+  group_by(pid) %>% summarize(first_admit_pre_ibis_date = min(event_start_date), .groups = 'drop')
+
+first_admit_pre_ibis_table <- cov_table %>%
+  left_join(pre_ibis_first_in, by = "pid") %>%
+  inner_join(ibis_yesno, by = "pid") %>% filter(ibis == 1)
+
+ibis_pre_post_dates_table <- full_join(first_admit_pre_ibis_table, first_admit_post_ibis_table,
+                   by = c("pid", "coverage_start_date", "coverage_end_date",
+                                              "first_reminder_complete_date",
+                                              "last_reminder_complete_date", "ibis")) %>%
+  mutate(pre = case_when(is.na(first_admit_pre_ibis_date) ~
+                         first_reminder_complete_date - coverage_start_date,
+                         !is.na(first_admit_pre_ibis_date) ~
+                         first_admit_pre_ibis_date - coverage_start_date)) %>%
+  mutate(post = case_when(is.na(first_admit_post_ibis_date) ~
+                          last_reminder_complete_date - first_reminder_complete_date,
+                          !is.na(first_admit_post_ibis_date) ~
+                          first_admit_post_ibis_date - first_reminder_complete_date)) %>%
+  mutate(censor_pre = case_when(is.na(first_admit_pre_ibis_date) ~ 1,
+                                !is.na(first_admit_pre_ibis_date) ~ 0)) %>%
+  mutate(censor_post = case_when(is.na(first_admit_post_ibis_date) ~ 1,
+                                 !is.na(first_admit_post_ibis_date) ~ 0)) %>%
+  filter(pre > 0) %>%
+  filter(post > 0) %>%
+  mutate(pre_time = first_reminder_complete_date - coverage_start_date) %>%
+  mutate(post_time = last_reminder_complete_date - first_reminder_complete_date)
+
+# Pivot longer
+ibis_pre_post_times_long <- ibis_pre_post_dates_table %>%
+  pivot_longer(c(pre, post), names_to = "period", values_to = "time") %>%
+  mutate(censor = case_when(period == "pre" ~ censor_pre,
+                            period == "post" ~ censor_post)) %>%
+  select(pid, period, time, censor)
+
+# summary table
+summary_table <- data_full %>%
+  group_by(pid) %>%
+  summarize(
+    total_coverage_days = sum(coverage_duration_days, na.rm = TRUE),
+    total_er_visits = sum(event_type == 'emergency', na.rm = TRUE),
+    total_admissions = sum(event_type == 'inpatient', na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+print(summary_table)
+
+
+```
+
+```{r}
+# Sum all the values
+total_coverage_days <- sum(summary_table$total_coverage_days)
+total_er_visits <- sum(summary_table$total_er_visits)
+total_admissions <- sum(summary_table$total_admissions)
+
+totals <- tibble(
+  total_coverage_days = total_coverage_days,
+  total_er_visits = total_er_visits,
+  total_admissions = total_admissions
+)
+
+print(totals)
+```
+
+```{r}
+cov_yrs = total_coverage_days/365
+cov_yrs
+```
+
+
+```{r}
+thousand_yrs_coverage_days <- sum(summary_table$total_coverage_days) * 2.0864
+thousand_yrs_er_visits <- sum(summary_table$total_er_visits) * 2.0864
+thousand_yrs_admissions <- sum(summary_table$total_admissions) * 2.0864
+hundred_yrs_coverage_days <- thousand_yrs_coverage_days/10
+hundred_yrs_er_visits <- thousand_yrs_er_visits/10
+hundred_yrs_admissions <- thousand_yrs_admissions/10
+
+
+thousand_totals <- tibble(
+  thousand_yrs_coverage_days = thousand_yrs_coverage_days,
+  thousand_yrs_er_visits = thousand_yrs_er_visits,
+  thousand_yrs_admissions = thousand_yrs_admissions,
+  hundred_yrs_coverage_days = hundred_yrs_coverage_days,
+  hundred_yrs_er_visits = hundred_yrs_er_visits,
+  hundred_yrs_admissions = hundred_yrs_admissions
+)
+
+print(thousand_totals)
+```
+
+
+
+
+
+
+
+
+
