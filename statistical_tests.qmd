@@ -1,0 +1,109 @@
+---
+title: "statistical tests"
+format: pdf
+---
+
+### Loading the data
+```{r}
+new_events <- read_csv("2025_02_18_utilization_events.csv")
+new_report <- read_csv("2025_02_18_utilization_report.csv")
+```
+
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(pscl)  #zero-inflated models
+
+#fltr for patients with pre_time and post_time greater than 180 term
+term <- 180  # Replace with the actual term value
+ibis_pre_post_dates_table_180 <- ibis_pre_post_dates_table %>%
+  filter(pre_time > term & post_time > term)
+
+ibis_pre_post_times_long_180 <- ibis_pre_post_dates_table_180 %>%
+  pivot_longer(c(pre, post), names_to = "period", values_to = "time") %>%
+  mutate(censor = case_when(period == "pre" ~ censor_pre,
+                            period == "post" ~ censor_post)) %>%
+  select(pid, period, time, censor) %>%
+  mutate(admit = ifelse(time <= term, 1, 0))
+
+#McNemar's test for change in proportion of admissions
+mcr <- ibis_pre_post_times_long_180 %>%
+  select(pid, period, admit) %>%
+  pivot_wider(names_from = period, values_from = admit)
+
+mcr_table_data <- table(mcr$pre, mcr$post)
+
+mcr_matrix <- as.matrix(mcr_table_data)
+dimnames(mcr_matrix) <- list(c("no", "yes"), c("no", "yes"))
+names(dimnames(mcr_matrix)) <- c("pre", "post")
+
+print(mcr_matrix)
+mcnemar_test_result <- mcnemar.test(mcr_table_data)
+print(mcnemar_test_result)
+
+#zero-inflated for ER
+ibis_term <- ibis_pre_post_dates_table_180 %>% select(pid)
+
+emergency_count_pre <- data_full %>% filter(event_type == "emergency") %>%
+  mutate(period = case_when(first_reminder_complete_date - term < event_start_date &
+                            event_start_date < first_reminder_complete_date ~ "pre",
+                            first_reminder_complete_date < event_start_date &
+                            event_start_date < first_reminder_complete_date + term ~ "post")) %>%
+  select(pid, period)
+
+emergency_counts <- ibis_term %>% left_join(emergency_count_pre, by = "pid") %>%
+  group_by(pid, period) %>%
+  summarize(count = n()) %>%
+  pivot_wider(names_from = period, values_from = count) %>%
+  select(pid, pre, post) %>% replace(is.na(.), 0)
+
+emergency_counts_long <- emergency_counts %>%
+  pivot_longer(cols = c(pre, post), names_to = "period", values_to = "count")
+
+fit <- zeroinfl(count ~ period, data = emergency_counts_long, dist = "poisson")
+summary(fit)
+
+#wilcoxon for inpatient admissions
+inpatient_admits_pre <- data_full %>% filter(event_type == "inpatient") %>%
+  mutate(period = case_when(first_reminder_complete_date - term < event_start_date &
+                            event_start_date < first_reminder_complete_date ~ "pre",
+                            first_reminder_complete_date < event_start_date &
+                            event_start_date < first_reminder_complete_date + term ~ "post")) %>%
+  select(pid, period)
+
+admits_counts <- ibis_term %>% left_join(inpatient_admits_pre, by = "pid") %>%
+  group_by(pid, period) %>%
+  summarize(count = n()) %>%
+  pivot_wider(names_from = period, values_from = count) %>%
+  select(pid, pre, post) %>% replace(is.na(.), 0)
+
+inpatient_admits_long <- admits_counts %>%
+  pivot_longer(cols = c(pre, post), names_to = "period", values_to = "count")
+
+mean_admissions <- inpatient_admits_long %>%
+  group_by(period) %>%
+  summarize(mean_pre = mean(count))
+
+print(mean_admissions)
+wilcox_test_result <- wilcox.test(admits_counts$post, admits_counts$pre, paired = TRUE)
+print(wilcox_test_result)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
