@@ -235,9 +235,79 @@ print(totals)
 
 ```
 
+# sum ibis inpatient
+create a table 
+
+```{r}
+
+events_full%>% filter(org_name=="Unicare - Study")%>%
+  summarize(sum(pre_ibis_inpatient))
+events_full%>% filter(org_name=="Unicare - Study")%>%
+  summarize(sum(ibis_inpatient))
+
+events_full %>% filter(org_name=="Unicare - Study")%>%
+  filter(event_start_date > ibis_coverage_start_date &
+           event_start_date < ibis_coverage_end_date) %>%
+  summarize(sum(event_type == "inpatient"))
+
+```
 
 
+```{r}
+events_full %>% filter(pre_ibis_inpatient == "1" | event_type == "no_utilization") %>%
+  group_by(pid, event_type) %>%
+  summarize(count = n()) %>% View()
+
+# do a pivot wider with the 1,2 & 0's into the column with 
+events_full %>% filter(pre_ibis_inpatient == "1" | event_type == "no_utilization") %>%
+  group_by(pid, event_type) %>%
+  summarize(count = n()) %>% pivot_wider(names_from = event_type, values_from = count) %>%
+  replace(is.na(.),0)%>% View()
+
+```
+```{r}
+# final iteration
+ibis_inpatient_table <- events_full %>% 
+  filter(org_name == "Unicare - Study") %>%
+  filter(ibis_inpatient == "1" | event_type == "no_utilization") %>%
+  group_by(pid, event_type) %>%
+  summarize(count = n()) %>% pivot_wider(names_from = event_type, values_from = count) %>%
+  replace(is.na(.),0) %>% rename(ibis_inpatient_count = inpatient)
 
 
+ibis_inpatient_table %>% ggplot(aes(x = ibis_inpatient_count)) + 
+  geom_bar()
 
+```
+
+```{r}
+# want another for preibis in patient and then join the two 
+pre_ibis_inpatient_table <- events_full %>% 
+  filter(org_name == "Unicare - Study") %>%
+  filter(pre_ibis_inpatient == "1" | event_type == "no_utilization") %>%
+  group_by(pid, event_type) %>%
+  summarize(count = n()) %>% pivot_wider(names_from = event_type, values_from = count) %>%
+  replace(is.na(.),0) %>% rename(pre_ibis_inpatient_count = inpatient)
+
+
+pre_ibis_inpatient_table %>% ggplot(aes(x = pre_ibis_inpatient_count)) + 
+  geom_bar()
+
+pre_ibis_inpatient_table %>% filter(pid == 10473)
+
+```
+
+```{r}
+report_full %>% filter(org_name == "Unicare - Study") %>% 
+  select(pid, total_ibis_inpatient) %>% head()
+
+ibis_inpatient_table %>% filter(pid == 10473)
+
+ibis_inpatient_table %>% count(ibis_inpatient_count)
+```
+
+
+```{r}
+pre_ibis_inpatient_table %>% full_join(ibis_inpatient_table, by = c("pid", "no_utlization")) %>% View()
+```
 
