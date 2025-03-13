@@ -1,0 +1,157 @@
+---
+title: "Unicare Pre vs Post Analysis"
+format: html
+editor_options:
+  chunk_output_type: console
+---
+
+```{r knitr, warning=FALSE, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(
+  fig.width=7.5, fig.height=4.2, fig.retina=3,
+  out.width = "100%",
+  cache = FALSE,
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.show = TRUE,
+  hiline = TRUE,
+  require("knitr")
+)
+
+```
+
+```{r, echo=FALSE, warning=FALSE, include=FALSE}
+library(survival)
+library(tidyverse)
+library(ggsurvfit)
+library(lubridate)
+library(ggfortify)
+
+library(pscl)
+
+library(broom)
+library(broom.mixed)
+
+library(readr)
+```
+
+```{r}
+term <- 180
+```
+
+## Compare pre/post ibis for patients in first `r term` days in each period.
+
+-   probability of inpatient admission
+
+-   Mcnemar's test for paired proportions
+
+-   \## stratify above by HCC score quantiles.
+
+```{r}
+event_file <- "../data/2025_02_18_utilization_events.csv"
+report_file <- "../data/2025_02_18_utilization_report.csv"
+
+source("read_clean.R")
+```
+
+```{r}
+events_full %>% filter(org_name == "Unicare - Study") %>% summarize(mean(post_ibis_inpatient))
+
+events_full %>% filter(org_name == "Unicare - Study") %>% 
+   summarize(mean(event_start_date > ibis_coverage_end_date))
+
+events_full %>% filter(org_name == "Unicare - Study") %>% 
+  filter(event_start_date > ibis_coverage_end_date) %>% 
+    summarize(mean(ibis_er))
+
+```
+
+```{r}
+events_full %>% filter(org_name == "Unicare - Study") %>% 
+    summarize(sum(pre_ibis_inpatient))
+events_full %>% filter(org_name == "Unicare - Study") %>% 
+    summarize(sum(ibis_inpatient))
+```
+
+```{r}
+events_full %>% filter(org_name == "Unicare - Study") %>% 
+    filter(event_start_date > ibis_coverage_start_date &
+          event_start_date < ibis_coverage_end_date) %>% 
+    summarize(sum(event_type == "inpatient"))
+    
+```
+
+```{r}
+
+```
+
+```{r echo = FALSE}
+
+ibis_inpatient_table <- events_full %>%  filter(org_name == "Unicare - Study")  %>% filter(ibis_inpatient == 1 | event_type == "no_utilization") %>% 
+    group_by(pid, event_type)  %>%
+    summarize(count = n(), .groups = "drop") %>% pivot_wider(names_from = event_type, values_from = count) %>%
+    replace(is.na(.), 0) %>% rename(ibis_inpatient_count = inpatient)
+
+```
+
+```{r}
+
+pre_ibis_inpatient_table <- events_full %>%  filter(org_name == "Unicare - Study")  %>% filter(pre_ibis_inpatient == 1 | event_type == "no_utilization") %>% 
+    group_by(pid, event_type)  %>%
+    summarize(count = n(), .groups = "drop") %>% pivot_wider(names_from = event_type, values_from = count) %>%
+    replace(is.na(.), 0) %>% rename(pre_ibis_inpatient_count = inpatient)
+```
+
+```{r}
+report_full %>% filter(org_name == "Unicare - Study") %>% 
+    select(pid, total_ibis_inpatient) %>% head()
+
+ibis_inpatient_table %>% filter(pid == 10473)
+```
+
+```{r}
+ibis_inpatient_table %>% count(ibis_inpatient_count)
+```
+
+```{r}
+inpatient_table <- pre_ibis_inpatient_table %>% full_join(ibis_inpatient_table, by = c("pid", "no_utilization")) %>% 
+    mutate(ibis_inpatient_count = if_else(is.na(ibis_inpatient_count), 0, ibis_inpatient_count ))
+```
+
+```{r}
+
+ibis_yes_no <- inpatient_table %>% 
+    pivot_longer(c(3,4), names_to = "pre_post", values_to = "admit_count") %>% 
+    mutate(admit = if_else(admit_count == 0, 0, 1))
+```
+
+```{r}
+#ibis_inpatient_count 
+```
+
+
+
+## Wilcox
+
+```{r}
+# pre- and post-IBIS inpatient counts
+pre_ibis_counts <- report_full %>%
+  filter(org_name == "Unicare - Study") %>%
+  select(pre_ibis_inpatient) %>%
+  pull(pre_ibis_inpatient)
+
+post_ibis_counts <- report_full %>%
+  filter(org_name == "Unicare - Study") %>%
+  select(post_ibis_inpatient) %>%
+  pull(post_ibis_inpatient)
+
+# Wilcoxon test
+wilcox_test_result <- wilcox.test(pre_ibis_counts, post_ibis_counts, paired = TRUE)
+
+# Display the result
+print(wilcox_test_result)
+
+
+```
+
