@@ -4,6 +4,7 @@ format: pdf
 ---
 
 ### Loading the data
+
 ```{r}
 new_events <- read_csv("2025_02_18_utilization_events.csv")
 new_report <- read_csv("2025_02_18_utilization_report.csv")
@@ -48,8 +49,8 @@ cov_table <- data_full %>%
   distinct()
 
 # Create ibis_yes and ibis_no
-ibis_yes <- cov_table %>% filter(!is.na(first_reminder_complete_date)) %>% mutate(ibis = 1)
-ibis_no <- cov_table %>% filter(is.na(first_reminder_complete_date)) %>% mutate(ibis = 0)
+ibis_yes <- cov_table %>% filter(!is.na(ibis_coverage_start_date)) %>% mutate(ibis = 1)
+ibis_no <- cov_table %>% filter(is.na(ibis_coverage_start_date)) %>% mutate(ibis = 0)
 ibis_yesno <- bind_rows(ibis_no, ibis_yes) %>% select(pid, ibis)
 
 # Get inpatient events, date of first
@@ -125,7 +126,7 @@ summary_table <- data_full %>%
     .groups = 'drop'
   )
 
-print(summary_table)
+head(summary_table)
 
 
 ```
@@ -150,7 +151,6 @@ cov_yrs = total_coverage_days/365
 cov_yrs
 ```
 
-
 ```{r}
 thousand_yrs_coverage_days <- sum(summary_table$total_coverage_days) * 2.0864
 thousand_yrs_er_visits <- sum(summary_table$total_er_visits) * 2.0864
@@ -171,7 +171,6 @@ thousand_totals <- tibble(
 
 print(thousand_totals)
 ```
-
 
 ```{r}
 # Different version
@@ -196,11 +195,11 @@ admit_table <- cov_table %>%
 
 # pre and post admissions counts
 pre_admissions <- data_full %>%
-  filter(event_start_date < first_reminder_complete_date, event_type == "inpatient") %>%
+  filter(event_start_date < coverage_start_date, event_type == "inpatient") %>%
   nrow()
 
 post_admissions <- data_full %>%
-  filter(event_start_date >= first_reminder_complete_date, event_type == "inpatient") %>%
+  filter(event_start_date >= coverage_start_date, event_type == "inpatient") %>%
   nrow()
 
 # pre and post inpatient days
@@ -236,7 +235,8 @@ print(totals)
 ```
 
 # sum ibis inpatient
-create a table 
+
+create a table
 
 ```{r}
 
@@ -252,7 +252,6 @@ events_full %>% filter(org_name=="Unicare - Study")%>%
 
 ```
 
-
 ```{r}
 events_full %>% filter(pre_ibis_inpatient == "1" | event_type == "no_utilization") %>%
   group_by(pid, event_type) %>%
@@ -265,6 +264,7 @@ events_full %>% filter(pre_ibis_inpatient == "1" | event_type == "no_utilization
   replace(is.na(.),0)%>% View()
 
 ```
+
 ```{r}
 # final iteration
 ibis_inpatient_table <- events_full %>% 
@@ -306,8 +306,32 @@ ibis_inpatient_table %>% filter(pid == 10473)
 ibis_inpatient_table %>% count(ibis_inpatient_count)
 ```
 
-
 ```{r}
 pre_ibis_inpatient_table %>% full_join(ibis_inpatient_table, by = c("pid", "no_utlization")) %>% View()
 ```
 
+```{r}
+other_table <- events_full %>%
+  filter(org_name == "Unicare - Study") %>%
+  group_by(pid) %>%
+  summarize(other_count = n(), .groups = "drop")
+
+combined_table <- pre_ibis_inpatient_table %>%
+  left_join(other_table, by = "pid")
+
+head(combined_table)
+combined_table %>% filter(pid == 10473)
+
+```
+
+```{r}
+ggplot(combined_table, aes(x = pre_ibis_inpatient_count, y = other_count)) +
+  geom_point() +
+  labs(x = "Pre-IBIS Inpatient Count",
+       y = "Other Count",
+       title = "Comparison of Pre-IBIS Inpatient Count and Other Count") +
+  theme_minimal()
+
+```
+
+# Bar plot pre-post

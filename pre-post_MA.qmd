@@ -130,28 +130,139 @@ ibis_yes_no <- inpatient_table %>%
 #ibis_inpatient_count 
 ```
 
-
-
-## Wilcox
+```{r}
+ibis_yes_no
+```
 
 ```{r}
 # pre- and post-IBIS inpatient counts
 pre_ibis_counts <- report_full %>%
   filter(org_name == "Unicare - Study") %>%
-  select(pre_ibis_inpatient) %>%
-  pull(pre_ibis_inpatient)
+  summarize(sum(pre_ibis_inpatient))
 
 post_ibis_counts <- report_full %>%
   filter(org_name == "Unicare - Study") %>%
-  select(post_ibis_inpatient) %>%
-  pull(post_ibis_inpatient)
+  summarize(sum(post_ibis_inpatient))
 
-# Wilcoxon test
-wilcox_test_result <- wilcox.test(pre_ibis_counts, post_ibis_counts, paired = TRUE)
+```
 
-# Display the result
+## Wilcox - does it assume normality
+
+```{r}
+# look at admissions using total_ibis_inpatient
+admit_table <- report_full %>%
+  filter(org_name == "Unicare - Study") %>%
+  select(total_pre_ibis_inpatient, total_ibis_inpatient) 
+
+admit_table
+table(admit_table$total_pre_ibis_inpatient, admit_table$total_ibis_inpatient)
+```
+
+# check this versus the difference
+
+# next take out patients with zero days on ibis
+
+# look at the counts per number of days coverage pre/post
+
+```{r}
+#wilcox is paired 
+
+#Wilcoxon test
+wilcox_test_result <- wilcox.test(admit_table$total_pre_ibis_inpatient, 
+                                  admit_table$total_ibis_inpatient, 
+                                  data = report_full, 
+                                  paired = TRUE)
+
 print(wilcox_test_result)
+```
+
+```{r}
+# filter coverage days >0
+admit_table_filtered <- report_full %>%
+  filter(org_name == "Unicare - Study") %>%
+  filter(covered_days_pre_ibis > 0) %>%
+  filter(covered_days_on_ibis > 0) %>%
+select(total_pre_ibis_inpatient, total_ibis_inpatient) 
+
+# Wilcoxon test: Pre vs Post IBIS days
+wilcoxon_result <- wilcox.test(
+  admit_table_filtered$total_pre_ibis_inpatient,
+  admit_table_filtered$total_ibis_inpatient,
+  paired = TRUE
+)
+
+print(admit_table_filtered)
+print(wilcoxon_result)
+```
+
+# Next thing -- filtering out patients that had a certain number of days in each period, filtering only the events that happened
+
+inpatient +/- term ibis_cov_start + 180 or - 180
+
+```{r}
+# count only events
+#pre_term <- events_full %>% 
+#  filter(ibis_coverage_start_date - 180 days # so 180 days before start date)
+         
+#prost_term <- events_full %>% 
+#  filter(ibis_coverage_start_date + 180 days # so 180 days after start date)
+
+
+term <- 180
+
+ibis_term <- report_full %>%
+    filter(org_name == "Unicare - Study") %>%
+    filter(ibis_coverage_end_date - ibis_coverage_start_date > term) %>%
+    filter(ibis_coverage_start_date - coverage_start_date > term) %>%
+    mutate(days = ibis_coverage_end_date - ibis_coverage_start_date)
+
+events_during_ibis_term <- ibis_term %>%
+  group_by(pid, days) %>%
+  summarize(inpatient_count = sum(event_type == "inpatient"))
+
+print(events_during_ibis_term)
+
+```
+
+```{r}
+ibis_term <- report_full %>%
+    filter(org_name == "Unicare - Study") %>%
+    filter(ibis_coverage_end_date - ibis_coverage_start_date > term) %>%
+    filter(ibis_coverage_start_date - coverage_start_date > term) %>%
+    mutate(days = ibis_coverage_end_date - ibis_coverage_start_date)
+
+events_during_ibis_term <- ibis_term %>%
+  group_by(pid, days) %>%
+  summarize(
+    pre_ibis_inpatient_count = sum(event_type == "inpatient" & coverage_start_date < ibis_coverage_start_date),
+    post_ibis_inpatient_count = sum(event_type == "inpatient" & coverage_end_date > ibis_coverage_end_date)
+  )
+
+print(events_during_ibis_term)
+
 
 
 ```
 
+```{r}
+pre_ibis <- report_full %>%
+    filter(org_name == "Unicare - Study") %>%
+    filter(ibis_coverage_start_date - coverage_start_date > term) %>%
+    filter(coverage_start_date >= (ibis_coverage_start_date - 180)) %>%
+    group_by(pid) %>%
+    summarize(pre_ibis_inpatient_count = sum(event_type == "inpatient"))
+pre_ibis
+```
+
+```{r}
+events_during_ibis_term <- ibis_term %>%
+  filter(days >= 180) %>%  # Ensures at least 180 days of coverage
+  group_by(pid, days) %>%
+  summarize(
+    pre_ibis_inpatient_count = sum(event_type == "inpatient" & coverage_start_date < ibis_coverage_start_date),
+    post_ibis_inpatient_count = sum(event_type == "inpatient" & coverage_end_date > ibis_coverage_end_date)
+  )
+
+print(events_during_ibis_term)
+
+```

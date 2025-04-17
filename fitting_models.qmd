@@ -52,5 +52,8 @@ wilcox signed ranked test
 
 rpois(lamda) - generate random count data
 
+mean(ibis_yesno$ibis_inpatient_yesno == events_full$ibis_inpatient)
 
 
+Bar chart/ recreate table
+whats the percentage of how many patients had one admission -- 2?

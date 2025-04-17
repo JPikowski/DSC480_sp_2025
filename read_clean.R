@@ -7,6 +7,8 @@
 #cd C:\Users\jojob\OneDrive - University of New England\DSC 480\DSC480_sp_2025
 
 library(tidyverse)
+library(dplyr)
+library(lubridate)
 
 # Actual data files
 #events <- read_csv("../data/2024_11_25_utilization_events.csv")
@@ -27,10 +29,11 @@ events_full <- events %>%
 
 
 report_full <- report %>%
-  mutate_at(vars(contains("timestamp")), ~as.POSIXct(.x, format = "%Y-%m-%d %H:%M:%S")) %>%
-  mutate_at(vars(contains("timestamp")), ~as_date(.x)) %>%
-  rename_with(~str_replace(., "timestamp", "date"), contains("timestamp")) %>%
-    mutate(across(event_type, ~ str_replace(.x, " ", "_"))) |>
-  mutate(across(event_type, ~as.factor(.x)))
+  mutate(across(contains("timestamp"), ~ as.POSIXct(.x, format = "%Y-%m-%d %H:%M:%S"))) %>%
+  mutate(across(contains("timestamp"), ~ as_date(.x))) %>%
+  rename_with(~ str_replace(., "timestamp", "date"), contains("timestamp")) %>%
+  mutate(across(event_type, ~ str_replace(.x, " ", "_"))) %>%
+  mutate(across(event_type, ~ as.factor(.x)))
+
 
 

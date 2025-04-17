@@ -91,7 +91,7 @@ print(wilcox_test_result)
 
 ```
 
-# check the means -- use the other data set 
+# check the means -- use the other data set
 
 ```{r}
 events_full %>% filter(org_name == "Unicare - Study") %>% summarize(mean(post_ibis_inpatient))
@@ -105,27 +105,58 @@ events_full %>% filter(org_name == "Unicare - Study") %>%
 
 
 ```
+
 ```{r}
 report_full %>% filter(org_name == "Unicare - Study") %>% summarize(sum(ibis_inpatient))
 
 report_full %>% filter(org_name == "Unicare - Study") %>% summarize(sum(pre_ibis_inpatient))
 ```
 
-
 ```{r}
 
 events_full %>% filter(org_name == "Unicare - Study") %>% sum(ibis_inpatient)
 
 events_full %>% filter(org_name == "Unicare - Study") %>% sum(ibis_inpatient)
 
+```
 
->ibis cov start(
-  < ibis cov end(
-    sum event type
-
-    
-total admits / total patient days * 365 day / yr * 1000
+```{r}
+report_full %>%
+  filter(org_name == "Unicare - Study") %>%
+  filter(ibis_coverage_start_date <= event_start_date & event_start_date <= ibis_coverage_end_date) %>% summarize(total_event_type = sum(event_type))
 
 ```
 
+```{r}
+total_admits_per_1000 = (sum(admits, na.rm = TRUE) / sum(patient_days, na.rm = TRUE)) * 365 * 1000
+  )
+```
 
+```{r}
+# Create table patient id, number of inpatient admissions pre/ post, were admitted or not
+
+#pid, no_utilization, preibisinpatient count, ibis inpatient count
+
+inpatient_table <- pre_ibis_inpatient
+
+mutatate(admit = if_else(admit_count == 0, 0, 1))
+
+ibis_yes_no <- 
+
+# glm admit yes or no for a naiive test
+glm(admit ~ pre_post, ibis_yes_no, family = binomial) %>% summary()
+
+```
+
+```{r}
+#Box plot coverage days before and during ibis 
+# x - axis period( both during and pre)
+# y- axis days
+
+#Macnemars follows a chi squared distribution
+
+#find the mean number of coverage days and how many are zeros of the table 
+#table with counts
+#pid, pre_ibis_inpatient, ibis_inpatient, pre_admit, during_admit
+
+```
