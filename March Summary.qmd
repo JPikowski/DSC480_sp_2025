@@ -1,0 +1,404 @@
+---
+title: "March Summary"
+author: "JoJo Pikowski"
+format: pdf
+---
+
+# Summarizing activities and results
+
+To start the at the beginning of the semester:
+
+We began with some data wrangling reproducing the count data that is the same from the Unicare excel spreadsheet. For this we started with the toy data and I used the events_toy. Now that we are using the real patient data we can use the same code to reproduce the counts from the spreadsheet.
+
+```{r, echo = FALSE}
+library(tidyverse)
+library(lubridate)
+new_events <- read_csv("2025_02_18_utilization_events.csv")
+new_report <- read_csv("2025_02_18_utilization_report.csv")
+# Toy data files- these have the row values for each column shuffled separately.
+events <- read_csv("2025_02_18_utilization_events.csv")
+report <- read_csv("2025_02_18_utilization_report.csv")
+
+
+## A bit of cleaning
+events_full <- events %>%
+  mutate_at(vars(contains("timestamp")), ~as.POSIXct(.x, format = "%Y-%m-%d %H:%M:%S")) %>%
+  mutate_at(vars(contains("timestamp")), ~as_date(.x)) %>%
+  rename_with(~str_replace(., "timestamp", "date"), contains("timestamp")) %>%
+  mutate(across(event_type, ~ str_replace(.x, " ", "_"))) |>
+  mutate(across(event_type, ~as.factor(.x)))
+
+
+report_full <- report %>%
+  mutate(across(contains("timestamp"), ~ as.POSIXct(.x, format = "%Y-%m-%d %H:%M:%S"))) %>%
+  mutate(across(contains("timestamp"), ~ as_date(.x))) %>%
+  rename_with(~ str_replace(., "timestamp", "date"), contains("timestamp")) %>%
+  mutate(across(event_type, ~ str_replace(.x, " ", "_"))) %>%
+  mutate(across(event_type, ~ as.factor(.x)))
+
+
+# Read the dataset
+df <- read_csv("2025_02_18_utilization_events.csv")
+
+# Process the data
+data_full <- df %>%
+  mutate_at(vars(contains("timestamp")), ~as.POSIXct(.x, format = "%Y-%m-%d %H:%M:%S")) %>%
+  mutate_at(vars(contains("timestamp")), ~as_date(.x)) %>%
+  rename_with(~str_replace(., "timestamp", "date"), contains("timestamp"))
+
+data_full$event_type <- as.factor(data_full$event_type)
+
+levels(data_full$event_type) <- c("emergency", "inpatient", "no_utilization", "observation")
+
+# Create event_table
+event_table <- data_full %>%
+  group_by(pid, event_type) %>%
+  summarize(count = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = event_type, values_from = count) %>%
+  replace(is.na(.), 0)
+
+# Create cov_table
+cov_table <- data_full %>%
+  select(pid, coverage_start_date, coverage_end_date, first_reminder_complete_date,
+         ibis_coverage_start_date, ibis_coverage_end_date, last_reminder_complete_date) %>%
+  distinct()
+
+# Create ibis_yes and ibis_no
+ibis_yes <- cov_table %>% filter(!is.na(ibis_coverage_start_date)) %>% mutate(ibis = 1)
+ibis_no <- cov_table %>% filter(is.na(ibis_coverage_start_date)) %>% mutate(ibis = 0)
+ibis_yesno <- bind_rows(ibis_no, ibis_yes) %>% select(pid, ibis)
+
+# Get inpatient events, date of first
+in_first <- data_full %>% select(pid, event_type, event_start_date) %>%
+  filter(event_type == "inpatient") %>%
+  group_by(pid) %>% summarize(first_admit_date = min(event_start_date), .groups = 'drop')
+
+admit_table <- cov_table %>%
+  left_join(in_first, by = "pid") %>%
+  left_join(ibis_yesno, by = "pid")
+
+admit_table_times <- admit_table %>%
+  mutate(pre_time = first_reminder_complete_date - coverage_start_date) %>%
+  mutate(post_time = coverage_end_date - first_reminder_complete_date) %>%
+  filter(!is.na(post_time)) %>%  # remove 711 non ibis
+  filter(pre_time >= 0)          # remove observations with first_reminder < coverag_start
+
+# First admit post ibis
+post_ibis_first_in <- data_full %>% filter(event_start_date > first_reminder_complete_date) %>%
+  select(pid, event_type, event_start_date) %>%
+  filter(event_type == "inpatient") %>%
+  group_by(pid) %>% summarize(first_admit_post_ibis_date = min(event_start_date), .groups = 'drop')
+
+first_admit_post_ibis_table <- cov_table %>%
+  left_join(post_ibis_first_in, by = "pid") %>%
+  inner_join(ibis_yesno, by = "pid") %>% filter(ibis == 1)
+
+# First admit pre ibis
+pre_ibis_first_in <- data_full %>% filter(event_start_date < first_reminder_complete_date) %>%
+  select(pid, event_type, event_start_date) %>%
+  filter(event_type == "inpatient") %>%
+  group_by(pid) %>% summarize(first_admit_pre_ibis_date = min(event_start_date), .groups = 'drop')
+
+first_admit_pre_ibis_table <- cov_table %>%
+  left_join(pre_ibis_first_in, by = "pid") %>%
+  inner_join(ibis_yesno, by = "pid") %>% filter(ibis == 1)
+
+ibis_pre_post_dates_table <- full_join(first_admit_pre_ibis_table, first_admit_post_ibis_table,
+                   by = c("pid", "coverage_start_date", "coverage_end_date",
+                                              "first_reminder_complete_date",
+                                              "last_reminder_complete_date", "ibis")) %>%
+  mutate(pre = case_when(is.na(first_admit_pre_ibis_date) ~
+                         first_reminder_complete_date - coverage_start_date,
+                         !is.na(first_admit_pre_ibis_date) ~
+                         first_admit_pre_ibis_date - coverage_start_date)) %>%
+  mutate(post = case_when(is.na(first_admit_post_ibis_date) ~
+                          last_reminder_complete_date - first_reminder_complete_date,
+                          !is.na(first_admit_post_ibis_date) ~
+                          first_admit_post_ibis_date - first_reminder_complete_date)) %>%
+  mutate(censor_pre = case_when(is.na(first_admit_pre_ibis_date) ~ 1,
+                                !is.na(first_admit_pre_ibis_date) ~ 0)) %>%
+  mutate(censor_post = case_when(is.na(first_admit_post_ibis_date) ~ 1,
+                                 !is.na(first_admit_post_ibis_date) ~ 0)) %>%
+  filter(pre > 0) %>%
+  filter(post > 0) %>%
+  mutate(pre_time = first_reminder_complete_date - coverage_start_date) %>%
+  mutate(post_time = last_reminder_complete_date - first_reminder_complete_date)
+
+# Pivot longer
+ibis_pre_post_times_long <- ibis_pre_post_dates_table %>%
+  pivot_longer(c(pre, post), names_to = "period", values_to = "time") %>%
+  mutate(censor = case_when(period == "pre" ~ censor_pre,
+                            period == "post" ~ censor_post)) %>%
+  select(pid, period, time, censor)
+
+# summary table
+summary_table <- data_full %>%
+  group_by(pid) %>%
+  summarize(
+    total_coverage_days = sum(coverage_duration_days, na.rm = TRUE),
+    total_er_visits = sum(event_type == 'emergency', na.rm = TRUE),
+    total_admissions = sum(event_type == 'inpatient', na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+head(summary_table)
+```
+
+```{r, echo=FALSE}
+# Sum all the values
+total_coverage_days <- sum(summary_table$total_coverage_days)
+total_er_visits <- sum(summary_table$total_er_visits)
+total_admissions <- sum(summary_table$total_admissions)
+
+totals <- tibble(
+  total_coverage_days = total_coverage_days,
+  total_er_visits = total_er_visits,
+  total_admissions = total_admissions
+)
+
+print(totals)
+```
+
+These tables are just an example of some of the count tables we made. I know it is not the exact one from the excel spreadsheet but it was how I started until we switch data. It calculates pre- and post-coverage and compiles a summary table of the coverage days, emergency visits, as well as admissions. This count data allows us to compare our numbers to what was already calculated in the spreadsheet. Since then we have updated it knowing we can use the total from the report data.
+
+```{r, echo=FALSE}
+# want another for preibis in patient and then join the two 
+pre_ibis_inpatient_table <- events_full %>% 
+  filter(org_name == "Unicare - Study") %>%
+  filter(pre_ibis_inpatient == "1" | event_type == "no_utilization") %>%
+  group_by(pid, event_type) %>%
+  summarize(count = n()) %>% pivot_wider(names_from = event_type, values_from = count) %>%
+  replace(is.na(.),0) %>% rename(pre_ibis_inpatient_count = inpatient)
+
+
+pre_ibis_inpatient_table %>% ggplot(aes(x = pre_ibis_inpatient_count)) + 
+  geom_bar()
+
+pre_ibis_inpatient_table %>% filter(pid == 10473)
+other_table <- events_full %>%
+  filter(org_name == "Unicare - Study") %>%
+  group_by(pid) %>%
+  summarize(other_count = n(), .groups = "drop")
+
+combined_table <- pre_ibis_inpatient_table %>%
+  left_join(other_table, by = "pid")
+
+head(combined_table)
+combined_table %>% filter(pid == 10473)
+
+ggplot(combined_table, aes(x = pre_ibis_inpatient_count, y = other_count)) +
+  geom_point() +
+  labs(x = "Pre-IBIS Inpatient Count",
+       y = "Count")+
+  theme_minimal()
+```
+
+
+This last graph visualizes the relationship between the two variables in this case the amount of pre-ibis inpatient counts. These are just different ways to visualize the different counts. 
+
+
+We also worked on the IBIS and MIIA data. 
+The code processes and compares event data between Unicare and MIIA. It summarizes event counts for MIIA patients, categorizing events (emergency or inpatient) and calculating inpatient days. This data is then joined with existing patient data for a complete summary table. 
+```{r, echo=FALSE}
+
+term <- 0
+lag <- term
+
+ibis_term <- events_full %>%
+    filter(str_detect(org_name, "Unicare")) %>%
+    filter(ibis_coverage_end_date - ibis_coverage_start_date > term) %>%
+    mutate(days = ibis_coverage_end_date - ibis_coverage_start_date)
+
+ibis_patients_term <- ibis_term %>%
+    select(pid) %>% distinct() %>% mutate(cohort = "Unicare")
+
+# finding if MIIA is in the org name
+MIIA_term <- events_full %>% filter(str_detect(org_name, "MIIA")) %>%
+    filter(ibis_coverage_start_date - coverage_start_date > term) %>%
+    mutate(days = ibis_coverage_start_date - coverage_start_date)
+
+MIIA_patients_term <- MIIA_term %>%
+    select(pid) %>% distinct() %>%
+    mutate(cohort = "MIIA")
+
+MIIA_events <- MIIA_term %>%
+    filter(term == 0 & event_start_date < ibis_coverage_start_date |
+           term !=0 & event_start_date < ibis_coverage_start_date &
+                      event_start_date < coverage_start_date + lag)
+
+event_list <- c("emergency", "inpatient") ## in case one or more are missing
+
+ibis_events <- events_full %>%
+    filter(term == 0 & event_start_date > ibis_coverage_start_date |
+           term != 0 & event_start_date > ibis_coverage_start_date &
+                       event_start_date < ibis_coverage_start_date + term)
+
+ibis_counts <- ibis_events %>%
+     mutate(event_type = factor(event_type, levels = event_list)) %>%
+    group_by(pid, event_type)  %>%
+    summarize(count = n(), .groups = "drop") %>%
+    pivot_wider(names_from = event_type, values_from = count)  %>%
+    replace(is.na(.), 0) %>% select(c(1:3))
+
+ibis_admit_days <- ibis_events %>%
+     group_by(pid) %>% summarize(inpatient_days = round(sum(event_duration_days), 0))
+
+ibis_events_pre <- ibis_counts %>%
+    full_join(ibis_admit_days, by = "pid")
+
+ibis_event_summary <- ibis_patients_term %>% left_join(ibis_events_pre, by = "pid") %>%
+    replace(is.na(.), 0) %>%
+    select(pid, emergency, inpatient, inpatient_days)
+
+MIIA_counts <- MIIA_events %>%
+     mutate(event_type = factor(event_type, levels = event_list)) %>%
+    group_by(pid, event_type)  %>%
+    summarize(count = n(), .groups = "drop") %>%
+    pivot_wider(names_from = event_type, values_from = count)  %>%
+    replace(is.na(.), 0)
+
+MIIA_admit_days <- MIIA_events %>%
+     group_by(pid) %>% summarize(inpatient_days = round(sum(event_duration_days), 0))
+
+MIIA_events_pre <- MIIA_counts %>%
+    full_join(MIIA_admit_days, by = "pid")
+
+MIIA_event_summary <- MIIA_patients_term %>% left_join(MIIA_events_pre, by = "pid") %>%
+    replace(is.na(.), 0) %>%
+    select(pid, emergency, inpatient, inpatient_days)
+
+combined_event_summary <- rbind(
+  ibis_event_summary %>% mutate(org = "Unicare"),
+  MIIA_event_summary %>% mutate(org = "MIIA")
+)
+admit_summary <- combined_event_summary %>%
+  mutate(admit = ifelse(inpatient > 0, 1, 0))
+
+ggplot(admit_summary, aes(x = org, fill = as.factor(admit))) +
+  geom_bar() +
+  labs(title = "Admissions Comparison", 
+       x = "Organization", 
+       y = "Count", 
+       fill = "Admit Status") +
+  scale_fill_manual(values = c("0" = "red", "1" = "blue"), 
+                    labels = c("Not Admitted", "Admitted")) +
+  theme_minimal()
+```
+The bar plot is displaying the distribution of admitted and non-admitted patients for both Unicare and MIIA The colors represent blue for admitted and red for not admitted. This gives us a visual comparison of admission counts between the two organizations.
+
+```{r,echo=FALSE}
+total_days_coverage <- events_full %>%
+  mutate(coverage_days = as.numeric(ibis_coverage_end_date - ibis_coverage_start_date)) %>%
+  group_by(pid) %>%
+  summarize(total_coverage_days = sum(coverage_days))
+
+head(total_days_coverage)
+```
+
+This calculates the total number of coverage days for each patient from  events_full. In a new column, coverage_days, it finds the difference between the ibis_coverage_end_date and ibis_coverage_start_date giving the duration of coverage for each event. The data is then grouped by the pid. Finally it summarizes the total coverage days for each patient by summing their individual coverage durations. 
+
+
+```{r,echo=FALSE}
+
+#days of coverage for Unicare patients
+unicare_days_coverage <- events_full %>%
+  filter(str_detect(org_name, "Unicare")) %>%
+  mutate(coverage_days = as.numeric(ibis_coverage_end_date - ibis_coverage_start_date)) %>%
+  group_by(pid) %>%
+  summarize(total_coverage_days = sum(coverage_days)) %>%
+  mutate(org = "Unicare")
+
+#days of coverage for MIIA patients
+miia_days_coverage <- events_full %>%
+  filter(str_detect(org_name, "MIIA")) %>%
+  mutate(coverage_days = as.numeric(ibis_coverage_end_date - ibis_coverage_start_date)) %>%
+  group_by(pid) %>%
+  summarize(total_coverage_days = sum(coverage_days)) %>%
+  mutate(org = "MIIA")
+
+print("Total coverage days for Unicare patients:")
+head(unicare_days_coverage)
+
+print("Total coverage days for MIIA patients:")
+head(miia_days_coverage)
+
+```
+These tables are very similar with a slightly different format. This is just separating them based on the organization which could be MIIA or Unicare. This table is just using the unique patient id and the total coverage days. 
+
+```{r,echo=FALSE}
+total_days_coverage <- rbind(unicare_days_coverage, miia_days_coverage) #I looked up rbind to combine the data 
+# rbind(): The rbind or the row bind function is used to bind or combine the multiple group of rows together.
+
+ggplot(total_days_coverage, aes(x = org, y = total_coverage_days, fill = org)) +
+  geom_col() +
+  labs(title = "Total Number of Days of Coverage by Organization", 
+       x = "Organization", 
+       y = "Total Days of Coverage") +
+  theme_minimal()
+```
+
+From those two tables we can visualize the difference between the total coverage days for the different organizations using a column graph. 
+
+
+Recently we have getting the same counts using the report full data as it already has a column where it is 1's and 0's indicating if there is an admit or not for the patient. Therefore we are able to sum the table to get the same results. 
+
+The latest thing I have been working on is the Wilcoxon test. 
+
+```{r, echo=FALSE}
+# look at admissions using total_ibis_inpatient
+admit_table <- report_full %>%
+  filter(org_name == "Unicare - Study") %>%
+  select(total_pre_ibis_inpatient, total_ibis_inpatient) 
+
+admit_table
+table(admit_table$total_pre_ibis_inpatient, admit_table$total_ibis_inpatient)
+```
+
+```{r, echo=FALSE}
+#wilcox is paired 
+
+#Wilcoxon test
+wilcox_test_result <- wilcox.test(admit_table$total_pre_ibis_inpatient, 
+                                  admit_table$total_ibis_inpatient, 
+                                  data = report_full, 
+                                  paired = TRUE)
+
+print(wilcox_test_result)
+```
+
+The Wilcoxon signed-rank test is used to compare pre- and post-intervention inpatient admission counts (IBIS) within the "Unicare - Study". It starts by filtering the report_full dataset for patients within the specified organization. It selects two relevant columns: total_pre_ibis_inpatient and total_ibis_inpatient, which represent the counts of inpatient admissions before and after. A table summarizing the paired counts is created.
+
+Actually running the Wilcoxon signed-rank test, it is a non-parametric statistical method used to evaluate whether there is a significant difference between two related samples (in this case, pre- and post-intervention admission counts). The test is conducted with the wilcox.test() function, specifying that the data is paired. Finally, the test results, including the test statistic and p-value to determine if there is a significant difference. It is assuming normality however this data is not normally distributed. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
